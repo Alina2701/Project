@@ -1,0 +1,125 @@
+---
+title: "Final Project"
+author: "Alina"
+date: "11/27/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+  My chosen data represents New York Airbnb data for 2019. This data was collected from Kaggle website. My goal in this project is to create a model predicting price for Airbnb. In order to do so, I will create a few models and perform variable selection. Also I will try to perform analysis to see where are the most expensive listings and what is their average price.\
+  First of all, let's take a look at my data
+  
+```{r}
+library(tidyverse)
+#library(knitr)
+mydata <- read_csv("AB_NYC_2019.csv")
+#summary(mydata)
+#head(mydata)
+glimpse(mydata)
+```
+
+  There are 48,895 observations and 16 variables, such as name of the host, neighborhood, room type and reviews per month. I noticed that there are some missing values. Also price vary from 0 to 10.000, which seems unrealistic to me and will need to keep in mind it.
+
+```{r}
+summary(is.na(mydata))
+```
+  Precisely, there are 10052 NA values in reviews_per_month and last_review. Some people don't leave reviews, so I think it doesn't affect price and I will need to omit these missing values.
+
+```{r}
+mydata$reviews_per_monthNA<-mydata$reviews_per_month
+mydata$reviews_per_monthNA[mydata$reviews_per_month==0]<-NA
+mydata$last_reviewNA<-mydata$last_review
+mydata$last_reviewNA[mydata$last_review==0]<-NA
+#summary(mydata$last_reviewNA)
+summary(mydata$reviews_per_monthNA)
+
+```
+  So I now dealing with extreme values of price, I decided to remove 10% of the lowest and highest values in the price column.
+
+```{r}
+filtered_mydata <- mydata %>% 
+  filter(price < quantile(mydata$price, 0.9) & price > quantile(mydata$price, 0.1))%>%drop_na()
+```
+  Now after cleaning my data we see some trends.\
+I did analysis to find out the type of listing that are common to a particular neighborhood.
+
+```{r}
+ggplot(mydata, aes(x = fct_infreq(neighbourhood_group), fill = room_type)) +
+    geom_bar() +
+    labs(title="Number of listings by neighbourhood",
+         x="Borough",y="Number of listings") +
+    theme(legend.position = "bottom")
+```
+
+We see that:\
+1. Manhattan has the most number of listings and entire home/apt dominates there.\
+2. In Brooklyn it's almost evenly split entire home/apt and private room.\
+3. Shared room is the least common in all neighborhoods.
+
+```{r}
+mydata%>%
+group_by(neighbourhood_group)%>%
+  summarise(mean_price = mean(price))%>%
+  ggplot(aes(x=reorder(neighbourhood_group,mean_price),y=mean_price, fill=neighbourhood_group))+geom_col(color = "black") +
+geom_text(aes(label = round(mean_price,digit = 2)), hjust = 2.0, color = "black", size = 3.0)+
+  xlab("Neighbourhood")+ylab("Average Price")+
+  ggtitle("Mean Price in Different Neighbourhood")
+```
+  We see that the most expensive listing is in Manhattan 196.88 USD, followed by Brooklyn 124.38 and Bronx has the cheapest listing with an average price of 87.50 USD.
+```{r}
+mydata%>%
+group_by(room_type)%>%
+  summarise(mean_price = mean(price))%>%
+  ggplot(aes(x=reorder(room_type,mean_price),y=mean_price, fill=room_type))+geom_col(color = "black") +
+geom_text(aes(label = round(mean_price,digit = 2)), hjust = 2.0, color = "black", size = 4.0)+
+  xlab("Room type")+ylab("Average Price")+
+  ggtitle("Mean Price of Different Types of Listings")
+```
+  Not surprisingly an average price is the highest for Entire home/apt - 211.79 USD.\
+  \
+  Now, I will try to build the linear model predicting price. I will omit such predictors as host name, ID and last review as I think it's not relevant to predicting price.\
+  Thus, predictors that I will be using are: neighbourhood_group; latitude; longitude; room_type; minimum_nights; number_of_reviews; reviews_per_month; calculated_host_listings_count; availability_365.
+  
+```{r}
+airbnb_model_1<- lm (price ~ neighbourhood_group + latitude + longitude + room_type + minimum_nights  + number_of_reviews + reviews_per_month + calculated_host_listings_count +
+                        availability_365, data = filtered_mydata)
+
+summary(airbnb_model_1)
+```
+  Here we see that Adjusted R-squared(percentage of variance explained) is 45% which indicates that this model fits pretty well already. \
+  Now I will use graphical diagnostics:\
+  \
+  \
+  \
+
+```{r}
+par(mfrow=c(2,2))
+plot(airbnb_model_1)
+```
+  The fist plot Residuals vs Fitted helps us to detect lack of fit. As smoother curve as more constant variance. Our plot shows some curvilinear trend suggesting some adjustments to the model. From QQ plot we can see if normality assumption is met. We see that two tails of points diverging from linearity suggesting  a long-tailed error. Therefore, the model needs some changes.\
+  I will use AIC to select needed variables. 
+
+```{r}
+airbnb_model_2<-step(airbnb_model_1)
+```
+  Thus removing reviews_per_month would give us the lowest AIC of 233573. Removing any other predictors will only increase AIC.
+
+```{r}
+anova(airbnb_model_1,airbnb_model_2,test='Chi')
+```
+  Finally, I will calculate test error using predict() function to see how my model performs on future data:
+
+```{r}
+pi <- predict(object = airbnb_model_2, newdata = filtered_mydata)
+# Mean Squared Error (MSE)
+mean((pi - filtered_mydata$price)^2)
+
+# Mean Absolute Error (MAE)
+mean(abs(pi - filtered_mydata$price))
+
+```
+  Therefore, selected model airbnb_model_2 predicts the variable with a good fit.\
+  Doing this model I encounter some issues. For me was difficult to clean and prepare the data for analysis. I had to omit missing values and some extreme values in the price. Also I concluded that name of the host and id is not significant to my model so I can also exclude it.\
+  It was interesting to see average price of listings. I think as time pass by and new data would be available for 2020 it would be exciting to see trends during pandemic. 
+
+
